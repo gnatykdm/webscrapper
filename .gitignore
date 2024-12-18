@@ -111,3 +111,7 @@ dmypy.json
 
 # VS Code extensions
 .history/
+
+# Git 
+.git/
+

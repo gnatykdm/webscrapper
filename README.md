@@ -18,7 +18,7 @@ WebScrapper is a Python-based tool to scrape and save images from a given websit
 
 1. Clone the repository:
     ```sh
-    git clone https://github.com/yourusername/WebScrapper.git
+    git clone https://github.com/gnatykdm/webscrapper.git
     cd WebScrapper
 
 2. Install the required packages:
