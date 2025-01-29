@@ -1,155 +1,160 @@
 import os
-import time
+import sys
+import pyfiglet
 import requests
 from bs4 import BeautifulSoup
-from urllib.parse import urlparse, urljoin
-from typing import Any, List
-from colorama import Fore, Style, init
+from colorama import init, Fore
+from typing import Dict, List, Set
+from urllib.parse import urljoin
 
 init(autoreset=True)
 
-def timer(func: Any) -> Any:
-    def wrapped(*args, **kwargs) -> Any:
-        start_t: float = time.time()
-        result: Any = func(*args, **kwargs)
-        stop_t: float = time.time()
-        print(f"{Fore.GREEN}Fetching data took: {stop_t - start_t:.2f} seconds.")
-        return result
-    return wrapped
+HEADERS: Dict[str, str] = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/109.0",
+    "Accept-Language": "en-US,en;q=0.9",
+}
 
+ALLOWED_EXTENSIONS = {
+    '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.svg', '.webp',
+    '.mp4', '.avi', '.mkv', '.mov', '.webm', '.flv', '.mpeg', '.wmv', '.ogv', '.3gp',
+    '.pdf', '.txt', '.docx', '.xlsx', '.pptx', '.odt', '.rtf', '.tex', '.epub', '.md',
+    '.mp3', '.wav', '.flac', '.aac', '.ogg', '.m4a', '.wma',
+    '.zip', '.tar', '.rar', '.iso', '.7z', '.gz', '.bz2', '.xz',
+    '.sh', '.bat', '.exe', '.jar', '.apk', '.ps1', '.cgi', '.pl', '.py', '.rb', '.php',
+    '.c', '.cpp', '.cs', '.java', '.js', '.ts', '.html', '.css', '.go', '.swift', '.kt', '.lua',
+    '.json', '.yaml', '.xml', '.ini', '.csv', '.sql', '.db', '.sqlite', '.tar.gz', '.deb',
+}
 
-def check_if_dir_exist(dir_name: str) -> bool:
-    return os.path.exists(dir_name)
+def is_dir_exist(dir: str) -> None:
+    if dir is None:
+        raise ValueError(f"[{Fore.RED}BAD{Fore.RESET}] -- Dir can't be null.")
+    if not os.path.exists(dir):
+        os.mkdir(dir)
 
+def make_request(url: str) -> str:
+    response = requests.get(url, headers=HEADERS)
+    if response.status_code == 200:
+        return response.text
+    else:
+        return None
 
-def should_download_file(file_name: str, patterns: List[str], allowed_extensions: set) -> bool:
-    if '*' in patterns:
-        file_extension = os.path.splitext(file_name)[-1].lower()
-        return file_extension in allowed_extensions
-
-    for pattern in patterns:
-        if pattern.startswith("*.") and file_name.endswith(pattern[1:]):
-            return True
-        if pattern == file_name:
-            return True
-    return False
-
-
-def is_valid_file_url(url: str, allowed_extensions: set) -> bool:
-    return any(url.lower().endswith(ext) for ext in allowed_extensions)
-
-
-def download_files(base_url: str, patterns: List[str], directory: str, allowed_extensions: set) -> None:
-    if not check_if_dir_exist(directory):
-        os.makedirs(directory)
-
-    visited = set() 
-    stack = [base_url]
-
-    parsed_start_url = urlparse(base_url)
-    base_domain = parsed_start_url.netloc
-    base_path = parsed_start_url.path.rstrip('/')
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
-
-    while stack:
-        current_url = stack.pop()
-        if current_url in visited:
+def url_endpoint(url: str) -> str:
+    if url is None:
+        print(f"[{Fore.RED}BAD{Fore.RESET}] -- Url can't be null.")
+        return ""
+    
+    enpoint: str = ""
+    for i in (len(url) - 2, 0):
+        if url[i] != "/":
+            enpoint = "".join(url[i])
+        else:
             continue
-        visited.add(current_url)
+    return "/" + enpoint[::-1] + "/"
 
-        try:
-            print(f"{Fore.CYAN}Processing: {current_url}")
-            response = requests.get(current_url, headers=headers, timeout=10)
-            response.raise_for_status()
-            soup = BeautifulSoup(response.text, 'html.parser')
+def get_links(url: str) -> List[str]:
+    if not url:
+        raise ValueError(f"[{Fore.RED}BAD{Fore.RESET}] -- Url can't be null.")
+    response = make_request(url)
+    if response:
+        soup = BeautifulSoup(response, 'html.parser')
+        links = []
+        for a in soup.find_all('a', href=True):
+            link = a.get('href')
+            if link.endswith("/") and link != url_endpoint(link):
+                links.append(link)
+        return links
+    else:
+        return []
 
-            for link in soup.find_all('a', href=True):
-                href = link['href']
-                full_url = urljoin(current_url, href)
+def get_file_extension(file_name: str) -> str:
+    _, extension = os.path.splitext(file_name)
+    return extension.lstrip('.')
 
-                parsed_url = urlparse(full_url)
-                if parsed_url.netloc != base_domain or not parsed_url.path.startswith(base_path):
-                    continue
-
-                file_name = os.path.basename(full_url)
-                file_extension = os.path.splitext(file_name)[-1].lower()
-
-                if is_valid_file_url(full_url, allowed_extensions) and should_download_file(file_name, patterns, allowed_extensions):
-                    extension_dir = os.path.join(directory, file_extension.lstrip('.'))
-                    os.makedirs(extension_dir, exist_ok=True)
-
-                    file_path = os.path.join(extension_dir, file_name)
-                    if os.path.exists(file_path):
-                        print(f"{Fore.YELLOW}File already exists: {file_path}")
-                        continue
-
-                    try:
-                        with requests.get(full_url, stream=True, headers=headers, timeout=10) as r:
-                            r.raise_for_status()
-                            with open(file_path, 'wb') as f:
-                                for chunk in r.iter_content(chunk_size=8192):
-                                    f.write(chunk)
-                        print(f"{Fore.GREEN}Downloaded: {file_name} to {extension_dir}")
-                    except Exception as e:
-                        print(f"{Fore.RED}Failed to download {full_url}: {e}")
-
-                elif href.endswith('/'):
-                    if full_url not in visited:
-                        stack.append(full_url)
-
-            for css_link in soup.find_all('link', {'rel': 'stylesheet'}, href=True):
-                full_url = urljoin(current_url, css_link['href'])
-                print(f"{Fore.CYAN}Processing CSS: {full_url}")
-                response = requests.get(full_url, headers=headers, timeout=10)
-                response.raise_for_status()
-
-                for line in response.text.splitlines():
-                    if 'url(' in line:
-                        start = line.find('url(') + 4
-                        end = line.find(')', start)
-                        if start > 3 and end > start:
-                            file_url = line[start:end]
-                            full_file_url = urljoin(current_url, file_url)
-                            if is_valid_file_url(full_file_url, allowed_extensions):
-                                file_name = os.path.basename(full_file_url)
-                                if should_download_file(file_name, patterns, allowed_extensions):
-                                    print(f"{Fore.GREEN}Downloading background image: {full_file_url}")
-                                    download_files(full_file_url, patterns, directory, allowed_extensions)
-
-        except requests.RequestException as e:
-            print(f"{Fore.RED}Failed to process {current_url}: {e}")
-        except Exception as e:
-            print(f"{Fore.RED}Unexpected error with {current_url}: {e}")
-
-
-@timer
-def main() -> None:
-    import sys
-
-    if len(sys.argv) < 4:
-        print(f"{Fore.YELLOW}Usage: python scrapper.py <url> <extensions> <directory>")
-        print('Example 1: python scrapper.py https://example.com "*" downloads/')
-        print('Example 2: python scrapper.py https://example.com "*.jpg|logo.png" downloads/')
+def download_file(file_url: str, save_directory: str) -> None:
+    if file_url is None:
+        print(f"[{Fore.RED}BAD{Fore.RESET}] -- Pattern or file url can't be empty.")
         return
+    if not file_url.startswith("http"):
+        print(f"[{Fore.RED}BAD{Fore.RESET}] -- Invalid URL: {file_url}")
+        return
+    response = requests.get(file_url, headers=HEADERS, stream=True)
+    if response.status_code == 200:
+        extension = get_file_extension(file_url)
+        is_dir_exist(save_directory)
+        directory = os.path.join(save_directory, extension)
+        is_dir_exist(directory)
+        file_name = os.path.basename(file_url)
+        file_path = os.path.join(directory, file_name)
+        with open(file_path, 'wb') as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                f.write(chunk)
+        print(f"[{Fore.GREEN}OK{Fore.RESET}] -- File: {file_url} saved to: {file_path}")
+    else:
+        print(f"[{Fore.RED}BAD{Fore.RESET}] -- Failed to download file. HTTP status code: {response.status_code}")
 
-    path: str = sys.argv[1]
-    patterns: str = sys.argv[2]
+def search_files(pattern: List[str], url: str, save_directory: str) -> None:
+    if len(pattern) == 0 or not url:
+        print(f"[{Fore.RED}BAD{Fore.RESET}] -- Pattern or URL can't be empty")
+        return
+    response = requests.get(url, headers=HEADERS)
+    if response.status_code == 200:
+        soup = BeautifulSoup(response.text, 'html.parser')
+        if "*" in pattern:
+            print(f"[{Fore.GREEN}INFO{Fore.RESET}] -- Searching for all files...")
+            files = soup.find_all('a', href=True)
+            for file in files:
+                file_url = file['href']
+                if not file_url.startswith("http"):
+                    file_url = urljoin(url, file_url)
+                print(f"[{Fore.GREEN}INSTALLING{Fore.RESET}] -- {file_url}")
+                download_file(file_url, save_directory)
+        else:
+            print(f"[{Fore.GREEN}INFO{Fore.RESET}] -- Searching for files matching patterns: {Fore.CYAN}{pattern}{Fore.RESET}")
+            files = soup.find_all('a', href=True)
+            for file in files:
+                file_url = file['href']
+                if not file_url.startswith("http"):
+                    file_url = urljoin(url, file_url)
+                if any(file_url.endswith(ext) for ext in pattern):
+                    print(f"[{Fore.GREEN}INSTALLING{Fore.RESET}] -- {file_url}")
+                    download_file(file_url, save_directory)
+    else:
+        print(f"[{Fore.RED}BAD{Fore.RESET}] -- Failed to retrieve URL. Status code: {response.status_code}")
+
+def deep_search(url: str, visited: Set[str], save_directory: str, pattern: List[str], base_url: str) -> Set[str]:
+    if not url or url in visited:
+        return visited
+    visited.add(url)
+    print(f"[{Fore.GREEN}INFO{Fore.RESET}] -- Visiting: {url}")
+    if not url.startswith(base_url):
+        print(f"[{Fore.GREEN}INFO{Fore.RESET}] -- Skipping out-of-scope URL: {url}")
+        return visited
+    links = get_links(url)
+    for link in links:
+        full_url = urljoin(url, link)
+        if full_url not in visited:
+            search_files(pattern, full_url, save_directory)
+            visited = deep_search(full_url, visited, save_directory, pattern, base_url)
+    return visited
+
+def main() -> None:
+    if len(sys.argv) < 4:
+        print(f"\n[{Fore.RED}BAD{Fore.RESET}] -- Missing URL argument.\n")
+        print(f"[{Fore.CYAN}USAGE{Fore.RESET}] -- python scrapper.py <url> <extensions> <directory>")
+        print(f'[{Fore.CYAN}EXAMPLE 1{Fore.RESET}] -- python scrapper.py https://example.com "*" downloads/')
+        print(f'[{Fore.CYAN}EXAMPLE 2{Fore.RESET}] -- python scrapper.py https://example.com "jpg|deb" downloads/\n')
+        sys.exit(1)
+
+    basic_url: str = sys.argv[1]
+    patterns: List[str] = sys.argv[2].split("|")
     directory: str = sys.argv[3]
 
-    allowed_extensions = {
-        '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.svg', '.webp',
-        '.mp4', '.avi', '.mkv', '.mov', '.webm', '.flv', '.mpeg', '.wmv', '.ogv', '.3gp',
-        '.pdf', '.txt', '.docx', '.xlsx', '.pptx', '.odt', '.rtf', '.tex', '.epub', '.md',
-        '.mp3', '.wav', '.flac', '.aac', '.ogg', '.m4a', '.wma',
-        '.zip', '.tar', '.rar', '.iso', '.7z', '.gz', '.bz2', '.xz',
-        '.sh', '.bat', '.exe', '.jar', '.apk', '.ps1', '.cgi', '.pl', '.py', '.rb', '.php',
-        '.c', '.cpp', '.cs', '.java', '.js', '.ts', '.html', '.css', '.go', '.swift', '.kt', '.lua',
-        '.json', '.yaml', '.xml', '.ini', '.csv', '.sql', '.db', '.sqlite', '.tar.gz',
-    }
+    ascii_art = pyfiglet.figlet_format("WebScrapper")
 
-    pattern_list = patterns.split('|')
-    download_files(path, pattern_list, directory, allowed_extensions)
+    print("\n\t" + Fore.WHITE + " " * 3 + ascii_art)
+    print(f"\n[{Fore.GREEN}STARTING{Fore.RESET}] -- Start scrapping from: {basic_url}\n")
 
+    visited_urls: Set[str] = deep_search(basic_url, set(), directory, patterns, basic_url)
 
 if __name__ == '__main__':
     main()
