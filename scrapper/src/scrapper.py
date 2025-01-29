@@ -2,6 +2,7 @@ import os
 import sys
 import pyfiglet
 import requests
+import urllib.parse
 from bs4 import BeautifulSoup
 from colorama import init, Fore
 from typing import Dict, List, Set
@@ -96,28 +97,34 @@ def search_files(pattern: List[str], url: str, save_directory: str) -> None:
     if len(pattern) == 0 or not url:
         print(f"[{Fore.RED}BAD{Fore.RESET}] -- Pattern or URL can't be empty")
         return
+
+    if "*" in pattern:
+        pattern = ALLOWED_EXTENSIONS
+
     response = requests.get(url, headers=HEADERS)
     if response.status_code == 200:
         soup = BeautifulSoup(response.text, 'html.parser')
-        if "*" in pattern:
-            print(f"[{Fore.GREEN}INFO{Fore.RESET}] -- Searching for all files...")
-            files = soup.find_all('a', href=True)
-            for file in files:
-                file_url = file['href']
-                if not file_url.startswith("http"):
-                    file_url = urljoin(url, file_url)
-                print(f"[{Fore.GREEN}INSTALLING{Fore.RESET}] -- {file_url}")
-                download_file(file_url, save_directory)
+
+        if len(pattern) == len(ALLOWED_EXTENSIONS):
+            print(f"[{Fore.GREEN}INFO{Fore.RESET}] -- Searching for files matching patterns: {Fore.CYAN}['*']{Fore.RESET}")
         else:
             print(f"[{Fore.GREEN}INFO{Fore.RESET}] -- Searching for files matching patterns: {Fore.CYAN}{pattern}{Fore.RESET}")
-            files = soup.find_all('a', href=True)
-            for file in files:
-                file_url = file['href']
-                if not file_url.startswith("http"):
-                    file_url = urljoin(url, file_url)
-                if any(file_url.endswith(ext) for ext in pattern):
-                    print(f"[{Fore.GREEN}INSTALLING{Fore.RESET}] -- {file_url}")
-                    download_file(file_url, save_directory)
+
+        files = soup.find_all('a', href=True)
+        for file in files:
+            file_url = file['href']
+
+            if not file_url.startswith("http"):
+                file_url = urljoin(url, file_url)
+
+            parsed_url = urllib.parse.urlparse(file_url)
+            if parsed_url.query:
+                print(f"[{Fore.LIGHTMAGENTA_EX}SKIPPING{Fore.RESET}] -- Ignoring non-file URL: {file_url}")
+                continue
+
+            if any(file_url.endswith(ext) for ext in pattern):
+                print(f"[{Fore.GREEN}INSTALLING{Fore.RESET}] -- {file_url}")
+                download_file(file_url, save_directory)
     else:
         print(f"[{Fore.RED}BAD{Fore.RESET}] -- Failed to retrieve URL. Status code: {response.status_code}")
 
