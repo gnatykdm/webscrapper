@@ -19,7 +19,7 @@ A simple Python script to download files from a website recursively based on spe
 You can install the required libraries by running:
 
 ```bash
-pip install requests beautifulsoup4 colorama
+pip install -r requirements.txt
 ```
 
 ## Usage
@@ -47,7 +47,7 @@ This command will download all files from the specified URL.
 #### Download Specific Files (e.g., Images and Logos)
 
 ```bash
-python scrapper.py https://example.com "*.jpg|logo.png" ./downloads
+python scrapper.py https://example.com "*jpg|png" ./downloads
 ```
 
 This command will download only `.jpg` images and files named `logo.png`.
