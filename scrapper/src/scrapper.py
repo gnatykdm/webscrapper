@@ -124,17 +124,22 @@ def search_files(pattern: List[str], url: str, save_directory: str) -> None:
 def deep_search(url: str, visited: Set[str], save_directory: str, pattern: List[str], base_url: str) -> Set[str]:
     if not url or url in visited:
         return visited
+    
     visited.add(url)
     print(f"[{Fore.GREEN}INFO{Fore.RESET}] -- Visiting: {url}")
+
     if not url.startswith(base_url):
         print(f"[{Fore.GREEN}INFO{Fore.RESET}] -- Skipping out-of-scope URL: {url}")
         return visited
+    search_files(pattern, url, save_directory)
+
     links = get_links(url)
     for link in links:
-        full_url = urljoin(url, link)
+        full_url = urljoin(url, link)  
+    
         if full_url not in visited:
-            search_files(pattern, full_url, save_directory)
             visited = deep_search(full_url, visited, save_directory, pattern, base_url)
+
     return visited
 
 def main() -> None:
@@ -149,6 +154,7 @@ def main() -> None:
     patterns: List[str] = sys.argv[2].split("|")
     directory: str = sys.argv[3]
 
+    basic_url = basic_url.rstrip('/') + '/'
     ascii_art = pyfiglet.figlet_format("WebScrapper")
 
     print("\n\t" + Fore.WHITE + " " * 3 + ascii_art)
